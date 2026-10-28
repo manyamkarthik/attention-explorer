@@ -1,0 +1,33 @@
+name: Deploy demo to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-gpt2
+      # GPT-2 weights are too big for git, so build the int8 files here (CPU torch is plenty)
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install tiktoken numpy safetensors huggingface_hub
+      - run: PYTHONPATH=src python scripts/export_weights.py
+      - run: node scripts/check_js.js
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

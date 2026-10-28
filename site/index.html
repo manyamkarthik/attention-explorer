@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attention Explorer</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --line: #2a313c; --text: #e6edf3; --dim: #8b949e; --accent: #7ee0c3; --ink: #04130e;
+    --heat: #7ee0c3; --warn: #f0b072;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f6f8fa; --panel: #ffffff; --line: #d8dee4; --text: #1f2328; --dim: #656d76; --accent: #0a7f62; --ink: #fff;
+      --heat: #0a7f62; --warn: #b5530a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 14px; margin: 0 0 10px; font-weight: 600; }
+  h2 span { color: var(--dim); font-weight: 400; }
+  .sub { color: var(--dim); margin: 0 0 24px; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  button { font: inherit; }
+
+  textarea { width: 100%; min-height: 64px; resize: vertical; padding: 12px 14px; font: inherit; font-size: 17px;
+    color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .examples { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 18px; }
+  .examples button { background: none; border: 1px dashed var(--line); color: var(--dim); border-radius: 999px; padding: 3px 10px;
+    font-size: 13px; cursor: pointer; }
+  .examples button:hover { color: var(--text); border-color: var(--dim); }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; margin-bottom: 14px; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { background: var(--panel); color: var(--dim); border: 0; padding: 6px 12px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--accent); color: var(--ink); font-weight: 600; }
+  label.tog { display: flex; gap: 7px; align-items: center; cursor: pointer; user-select: none; }
+  label.tog input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .status { margin-left: auto; color: var(--dim); font-size: 13px; }
+  .bar { height: 3px; background: var(--line); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+
+  .picker { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 26px; }
+  .picker .name { color: var(--dim); font-size: 13px; width: 44px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 4px; }
+  .pills button { width: 30px; height: 28px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel);
+    color: var(--text); cursor: pointer; font-size: 13px; }
+  .pills button.on { background: var(--accent); color: var(--ink); border-color: var(--accent); font-weight: 600; }
+  .pills button:disabled { opacity: .35; cursor: default; }
+  .disabled { opacity: .35; pointer-events: none; }
+
+  /* the headline view: one sentence, lit up by where the selected word looks */
+  .listen { display: flex; flex-wrap: wrap; gap: 6px 4px; padding: 18px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; margin-bottom: 8px; min-height: 84px; align-items: flex-start; }
+  .tok { position: relative; padding: 6px 7px 16px; border-radius: 7px; cursor: pointer; white-space: pre; font-size: 18px;
+    border: 1px solid transparent; transition: background .25s; }
+  .tok small { position: absolute; left: 0; right: 0; bottom: 1px; text-align: center; font-size: 10px; color: var(--dim); }
+  .tok.q { border-color: var(--text); }
+  .tok.hot, .tok.hot small { color: var(--ink); }
+  .tok.future { opacity: .3; }
+  .hint { color: var(--dim); font-size: 13px; margin-bottom: 26px; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; }
+  @media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .matrix { overflow-x: auto; }
+  .mat { display: grid; gap: 1px; width: max-content; }
+  .mat .c { width: var(--s); height: var(--s); border-radius: 2px; cursor: crosshair; }
+  .mat .c.q { outline: 1px solid var(--text); outline-offset: -1px; }
+  .mat .rl { font-size: 12px; text-align: right; padding-right: 6px; white-space: pre; line-height: var(--s); cursor: pointer;
+    max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+  .mat .rl.q { color: var(--accent); font-weight: 600; }
+  .mat .cl { font-size: 12px; writing-mode: vertical-rl; transform: rotate(180deg); white-space: pre; height: 84px;
+    text-align: left; max-height: 84px; overflow: hidden; }
+  .readout { height: 22px; margin-top: 8px; color: var(--dim); font-size: 13px; }
+
+  .heads { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .heads button { padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
+    color: var(--dim); font-size: 11px; }
+  .heads button.on { border-color: var(--accent); color: var(--text); }
+  .heads canvas { width: 100%; aspect-ratio: 1; display: block; border-radius: 4px; image-rendering: pixelated; }
+
+  .preds { margin-top: 30px; }
+  .ptable { overflow-x: auto; }
+  .ptable table { border-collapse: collapse; font-size: 13px; }
+  .ptable td, .ptable th { padding: 4px 8px; text-align: center; white-space: pre; border-bottom: 1px solid var(--line); }
+  .ptable th { text-align: right; color: var(--dim); font-weight: 400; position: sticky; left: 0; background: var(--bg); }
+  .ptable td.peek { color: var(--warn); font-weight: 600; }
+  .legend { color: var(--dim); font-size: 13px; margin-top: 8px; }
+  .legend b { color: var(--warn); }
+
+  .note { margin-top: 32px; padding: 14px 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    color: var(--dim); font-size: 14px; }
+  .note b { color: var(--text); }
+  .note ul { margin: 6px 0 0; padding-left: 18px; }
+  .note li { margin: 4px 0; }
+  .err { color: var(--warn); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Attention Explorer</h1>
+  <p class="sub">Type any sentence and see which words each word is listening to, head by head, inside GPT-2.
+    Chapter 3 of <i>Build a Large Language Model (From Scratch)</i>.</p>
+
+  <textarea id="text" spellcheck="false">The animal didn't cross the street because it was too tired</textarea>
+  <div class="examples" id="examples">
+    <button>The animal didn't cross the street because it was too tired</button>
+    <button>The animal didn't cross the street because it was too wide</button>
+    <button>The trophy didn't fit in the suitcase because it was too big</button>
+    <button>Your journey starts with one step</button>
+    <button>The chef tasted the soup and said it needed more salt</button>
+  </div>
+
+  <div class="controls">
+    <div class="seg" id="mode">
+      <button data-v="gpt2" class="on">Trained Q·Kᵀ (GPT-2)</button>
+      <button data-v="simple">Simplified x·xᵀ (3.3)</button>
+    </div>
+    <label class="tog"><input type="checkbox" id="causal" checked> Causal mask</label>
+    <label class="tog" title="Most GPT-2 heads park unused attention on the first token. Hide it and renormalise to see the rest."><input type="checkbox" id="sink"> Hide first-token sink</label>
+    <div class="status mono" id="status">loading…<div class="bar"><i id="bar"></i></div></div>
+  </div>
+
+  <div class="picker" id="picker">
+    <span class="name">Layer</span><div class="pills" id="layers"></div>
+    <span class="name">Head</span><div class="pills" id="headpills"></div>
+  </div>
+
+  <h2>Who is <span id="qname" class="mono"></span> listening to? <span>Click any word to make it the query.</span></h2>
+  <div class="listen" id="listen"></div>
+  <div class="hint" id="hint"></div>
+
+  <div class="grid">
+    <div>
+      <h2>Attention weights <span id="mtitle"></span></h2>
+      <div class="matrix"><div class="mat" id="mat"></div></div>
+      <div class="readout mono" id="readout"></div>
+    </div>
+    <div id="headbox">
+      <h2>All 12 heads in layer <span id="hl" class="mono"></span> <span>· click one</span></h2>
+      <div class="heads" id="heads"></div>
+    </div>
+  </div>
+
+  <div class="preds" id="preds">
+    <h2>What GPT-2 predicts next at each position</h2>
+    <div class="ptable" id="ptable"></div>
+    <div class="legend" id="plegend"></div>
+  </div>
+
+  <div class="note">
+    <b>What you're looking at</b>
+    <ul>
+      <li>Each row of the matrix is one <b>query</b> token; the row is a softmax over the <b>keys</b>, so it sums to 1. Same thing the
+        book prints as <span class="mono">attn_weights</span>, just coloured.</li>
+      <li><b>Simplified x·xᵀ</b> is section 3.3: no trainable weights, just dot products of GPT-2's token embeddings. Every word mostly
+        attends to itself. <b>Trained Q·Kᵀ</b> is 3.4–3.6 with real weights: 12 layers × 12 heads, each with its own
+        W<sub>q</sub>, W<sub>k</sub>, W<sub>v</sub>.</li>
+      <li>Layer 4, head 3 is the one that links <span class="mono">it → animal</span>. It was found by searching all 144 heads for the
+        biggest weight, not picked by hand. Try the <i>tired</i> and <i>wide</i> examples: with the mask on, the row for
+        <span class="mono">it</span> is identical, because <span class="mono">it</span> can't see the word that decides its meaning yet.</li>
+      <li><b>Turn the mask off</b> and every token can read the future. GPT-2 was never trained that way, so it cheats: positions start
+        predicting the word that's already sitting next to them (highlighted). That's why chapter 3 masks.</li>
+      <li>The <b>first-token sink</b>: heads with nothing useful to do dump attention on token 0. Hiding it renormalises each row over
+        the other tokens.</li>
+    </ul>
+    <p id="where" style="margin:10px 0 0"></p>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const S = { mode: "gpt2", causal: true, sink: false, layer: 4, head: 3, q: null, res: null, layersReady: 0, userPickedQ: false };
+const fmt = t => t.replace(/\n/g, "↵");
+// sequential ramp from the panel colour to --heat; sqrt so small weights stay visible
+let C;
+const hex = h => h.trim().slice(1).match(/../g).map(x => parseInt(x, 16));
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  C = { heat: hex(cs.getPropertyValue("--heat")), panel: hex(cs.getPropertyValue("--panel")) };
+}
+const heat = w => `rgb(${C.panel.map((p, i) => Math.round(p + (C.heat[i] - p) * Math.sqrt(w))).join(",")})`;
+readColors();
+matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => { readColors(); render(); });
+
+// ---- where the numbers come from: the Python server if one is running, otherwise GPT-2 in a web worker
+let backend, worker;
+async function pickBackend() {
+  try {
+    const r = await fetch("api/health");
+    if (r.ok) return "server";
+  } catch {}
+  return "browser";
+}
+
+let timer, reqId = 0;
+function request() {
+  clearTimeout(timer);
+  timer = setTimeout(async () => {
+    const text = $("text").value, causal = S.causal, id = ++reqId;
+    if (backend === "server") {
+      const res = await fetch(`api/run?causal=${causal ? 1 : 0}&text=${encodeURIComponent(text)}`).then(r => r.json());
+      if (id === reqId) onResult(res);
+    } else worker.postMessage({ text, causal });
+  }, 250);
+}
+
+function onResult(res) {
+  if (res.text !== $("text").value || res.causal !== S.causal) return;  // stale
+  const prev = S.res && S.res.tokens.join("");
+  S.res = res;
+  S.layersReady = res.layers;
+  if (prev !== res.tokens.join("") || S.q === null || S.q >= res.tokens.length) {
+    const it = res.tokens.findIndex(t => t.trim().toLowerCase() === "it");
+    if (!S.userPickedQ || S.q === null || S.q >= res.tokens.length) S.q = it >= 0 ? it : res.tokens.length - 1;
+  }
+  render();
+}
+
+// ---- the matrix currently on screen, after the mode / mask / sink toggles
+function matrix(layer = S.layer, head = S.head) {
+  const r = S.res, T = r.tokens.length;
+  let m;
+  if (S.mode === "simple") {
+    m = Float32Array.from(r.simple);
+    if (S.causal) for (let i = 0; i < T; i++) for (let j = i + 1; j < T; j++) m[i * T + j] = 0;  // 3.5.1: mask, then renormalise
+  } else {
+    if (!r.attn[layer]) return null;
+    m = Float32Array.from(r.attn[layer][head]);
+  }
+  if (S.sink && T > 1) for (let i = 1; i < T; i++) m[i * T] = 0;
+  for (let i = 0; i < T; i++) {
+    let z = 0;
+    for (let j = 0; j < T; j++) z += m[i * T + j];
+    if (z > 0) for (let j = 0; j < T; j++) m[i * T + j] /= z;
+  }
+  return m;
+}
+
+function render() {
+  const r = S.res;
+  if (!r) return;
+  const T = r.tokens.length, simple = S.mode === "simple";
+  $("picker").classList.toggle("disabled", simple);
+  $("headbox").classList.toggle("disabled", simple);
+  $("layers").querySelectorAll("button").forEach((b, i) => { b.classList.toggle("on", i === S.layer); b.disabled = i >= S.layersReady; });
+  $("headpills").querySelectorAll("button").forEach((b, i) => b.classList.toggle("on", i === S.head));
+  $("hl").textContent = S.layer;
+  const m = T ? matrix() : null;
+  const label = simple ? "softmax(x · xᵀ), no weights" : `layer ${S.layer}, head ${S.head}`;
+  $("mtitle").textContent = `· ${label}${S.causal ? "" : " · NO MASK"}`;
+
+  // listening view
+  const L = $("listen");
+  L.innerHTML = "";
+  if (!m) {
+    L.innerHTML = `<span style="color:var(--dim)">${T ? `layer ${S.layer} is still downloading…` : "type something"}</span>`;
+  } else {
+    r.tokens.forEach((t, j) => {
+      const w = m[S.q * T + j], el = document.createElement("span");
+      el.className = "tok mono" + (j === S.q ? " q" : "") + (S.causal && j > S.q ? " future" : "") + (j !== S.q && w > 0.3 ? " hot" : "");
+      el.style.background = j === S.q ? "transparent" : heat(w);
+      el.textContent = fmt(t);
+      el.innerHTML += `<small>${j === S.q ? "query" : Math.round(w * 100) + "%"}</small>`;
+      el.onclick = () => { S.q = j; S.userPickedQ = true; render(); };
+      L.append(el);
+    });
+  }
+  $("qname").textContent = T ? `“${fmt(r.tokens[S.q]).trim()}”` : "";
+  let hint = "";
+  if (m && T) {
+    let best = -1, top = -1;
+    for (let j = 0; j < T; j++) if (j !== S.q && m[S.q * T + j] > top) { top = m[S.q * T + j]; best = j; }
+    if (best >= 0) hint = `Strongest link: “${fmt(r.tokens[S.q]).trim()}” → “${fmt(r.tokens[best]).trim()}” at ${(top * 100).toFixed(1)}%.`;
+    if (S.causal && S.q < T - 1) hint += " Faded words are in the future: the mask hides them.";
+  }
+  if (r.truncated) hint += " (Only the first 40 tokens are used.)";
+  $("hint").textContent = hint;
+
+  // matrix
+  const M = $("mat");
+  M.innerHTML = "";
+  if (m) {
+    const s = Math.max(10, Math.min(30, Math.floor(560 / T)));
+    M.style.setProperty("--s", s + "px");
+    M.style.gridTemplateColumns = `auto repeat(${T}, ${s}px)`;
+    M.append(document.createElement("div"));
+    r.tokens.forEach(t => { const d = document.createElement("div"); d.className = "cl mono"; d.textContent = fmt(t); M.append(d); });
+    for (let i = 0; i < T; i++) {
+      const rl = document.createElement("div");
+      rl.className = "rl mono" + (i === S.q ? " q" : "");
+      rl.textContent = fmt(r.tokens[i]);
+      rl.onclick = () => { S.q = i; S.userPickedQ = true; render(); };
+      M.append(rl);
+      for (let j = 0; j < T; j++) {
+        const c = document.createElement("div"), w = m[i * T + j];
+        c.className = "c" + (i === S.q ? " q" : "");
+        c.style.background = heat(w);
+        c.onmouseenter = () => ($("readout").textContent = `“${fmt(r.tokens[i]).trim()}” → “${fmt(r.tokens[j]).trim()}”  ${(w * 100).toFixed(1)}%`);
+        c.onclick = () => { S.q = i; S.userPickedQ = true; render(); };
+        M.append(c);
+      }
+    }
+  }
+
+  // 12 head thumbnails for this layer
+  const H = $("heads");
+  H.innerHTML = "";
+  for (let h = 0; h < 12; h++) {
+    const b = document.createElement("button"), cv = document.createElement("canvas");
+    b.className = h === S.head ? "on" : "";
+    const tm = !simple && T ? matrix(S.layer, h) : null;
+    let cap = `head ${h}`;
+    if (tm) {
+      cv.width = cv.height = T;
+      const ctx = cv.getContext("2d");
+      for (let i = 0; i < T; i++) for (let j = 0; j < T; j++) {
+        ctx.fillStyle = heat(tm[i * T + j]);
+        ctx.fillRect(j, i, 1, 1);
+      }
+      cap += ` · ${Math.round(tm[S.q * T + argmaxOther(tm, T)] * 100)}%`;
+    }
+    b.append(cv, cap);
+    b.title = "strongest weight from the selected query to another word";
+    b.onclick = () => { S.head = h; render(); };
+    H.append(b);
+  }
+
+  // predictions
+  const P = $("ptable"), next = r.next, masked = r.nextMasked;
+  if (simple || !next) {
+    P.innerHTML = simple ? "" : `<span style="color:var(--dim)">appears once all 12 layers and the output layer have downloaded…</span>`;
+    $("plegend").textContent = "";
+    $("preds").style.display = simple ? "none" : "";
+  } else {
+    $("preds").style.display = "";
+    const actual = j => (j + 1 < T ? r.tokens[j + 1] : null);
+    const cell = (g, j, peek) => `<td class="mono${peek && g === actual(j) && masked[j] !== g ? " peek" : ""}">${esc(fmt(g))}</td>`;
+    let html = `<table><tr><th>token</th>${r.tokens.map(t => `<td class="mono"><b>${esc(fmt(t))}</b></td>`).join("")}</tr>`;
+    html += `<tr><th>next (mask on)</th>${masked.map((g, j) => cell(g, j, false)).join("")}</tr>`;
+    if (!S.causal) html += `<tr><th>next (peeking)</th>${next.map((g, j) => cell(g, j, true)).join("")}</tr>`;
+    P.innerHTML = html + "</table>";
+    const cheats = S.causal ? 0 : next.filter((g, j) => g === actual(j) && masked[j] !== g).length;
+    $("plegend").innerHTML = S.causal
+      ? "Each column guesses the token to its right using only what's to its left. Untick <b style='color:inherit'>Causal mask</b> to let it peek."
+      : `<b>${cheats}</b> position${cheats === 1 ? "" : "s"} switched to the word that's actually next. Nothing learned, it just read the answer.`;
+  }
+}
+
+function argmaxOther(m, T) {
+  let best = 0, top = -1;
+  for (let j = 0; j < T; j++) if (j !== S.q && m[S.q * T + j] > top) { top = m[S.q * T + j]; best = j; }
+  return best;
+}
+const esc = s => s.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+
+// ---- controls
+for (let i = 0; i < 12; i++) {
+  const lb = document.createElement("button"), hb = document.createElement("button");
+  lb.textContent = hb.textContent = i;
+  lb.onclick = () => { S.layer = i; render(); };
+  hb.onclick = () => { S.head = i; render(); };
+  $("layers").append(lb);
+  $("headpills").append(hb);
+}
+$("mode").onclick = e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  S.mode = b.dataset.v;
+  $("mode").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+  render();
+};
+$("causal").onchange = e => { S.causal = e.target.checked; request(); };
+$("sink").onchange = e => { S.sink = e.target.checked; render(); };
+$("text").oninput = () => { S.userPickedQ = false; request(); };
+$("examples").onclick = e => {
+  if (e.target.tagName !== "BUTTON") return;
+  $("text").value = e.target.textContent;
+  S.userPickedQ = false;
+  request();
+};
+
+(async () => {
+  backend = await pickBackend();
+  $("where").innerHTML = backend === "server"
+    ? "<b>Computed in Python</b> by <span class='mono'>demo/server.py</span>: the chapter's <span class='mono'>MultiHeadAttention</span> class in PyTorch, full-precision GPT-2 weights."
+    : "<b>Computed in your browser.</b> GPT-2 small, ported to JavaScript (<span class='mono'>site/model.js</span>), weights in int8 (~160 MB, cached after the first visit). Matches the PyTorch version to 6 decimal places.";
+  if (backend === "server") {
+    $("status").firstChild.textContent = "Python server (torch) ";
+    $("bar").style.width = "100%";
+  } else {
+    worker = new Worker("worker.js");
+    worker.onmessage = ({ data: d }) => {
+      if (d.type === "result") onResult(d);
+      else if (d.type === "progress") {
+        const done = d.layers === 12 && d.shards === d.allShards;
+        $("status").firstChild.textContent = done
+          ? `GPT-2 loaded · ${d.mb.toFixed(0)} MB `
+          : `${d.layers < 12 ? `layer ${d.layers}/12` : `output layer ${d.shards}/${d.allShards}`} · ${d.mb.toFixed(0)} MB `;
+        $("bar").style.width = `${(100 * (d.layers + d.shards)) / (12 + d.allShards)}%`;
+      } else if (d.type === "error") $("status").innerHTML = `<span class="err">${esc(d.message)}</span>`;
+    };
+  }
+  request();
+})();
+</script>
+</body>
+</html>
